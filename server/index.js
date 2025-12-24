@@ -2,6 +2,8 @@ import http from "http";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT) || 50080;
+const PROTOCOL_VERSION = "ws-msg-v2";
+const BUILD_SHA = process.env.BUILD_SHA || "dev";
 const rooms = new Map();
 
 function randomId() {
@@ -124,14 +126,19 @@ wss.on("error", (error) => {
   console.error("WebSocket server error:", error);
 });
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
   ws.roomCode = null;
   ws.role = null;
   ws.clientId = randomId();
+  const requestUrl = req?.url || "";
   if (DEBUG_LOGS) {
     console.log("WS connection", {
       clientId: ws.clientId,
+      url: requestUrl,
     });
+  }
+  if (requestUrl.includes("/create-room") || requestUrl.includes("/join-room")) {
+    console.warn("Legacy WS path detected", { url: requestUrl });
   }
 
   ws.on("error", (error) => {
@@ -296,5 +303,6 @@ function leaveRoom(ws, isDisconnect = false) {
 }
 
 server.listen(PORT, () => {
+  console.log(`[TuneLink] protocol=${PROTOCOL_VERSION} build=${BUILD_SHA}`);
   console.log(`WebSocket server listening on ws://localhost:${PORT}`);
 });
