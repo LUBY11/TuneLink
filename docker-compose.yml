@@ -2,9 +2,16 @@ version: "3.8"
 
 services:
   server:
-    build: ./server
+    image: lubyduby/tunelink-server:latest
     environment:
       - PORT=50080
     ports:
       - "50080:50080"
+    restart: unless-stopped
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --schedule "0 0 * * *" --cleanup
     restart: unless-stopped

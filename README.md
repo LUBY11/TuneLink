@@ -14,6 +14,10 @@ Or with docker-compose:
 docker compose up --build
 ```
 
+Docker Hub (latest image) + auto updates:
+- Image: `lubyduby/tunelink-server:latest`
+- `docker compose up -d` uses Watchtower for scheduled updates
+
 ## Domain / TLS (WSS)
 For production, put the server behind a reverse proxy (Nginx/Caddy) and terminate TLS.
 Then set the extension server URL to `wss://your-domain.com`.
