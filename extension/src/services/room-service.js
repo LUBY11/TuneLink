@@ -4,7 +4,7 @@ import { renderSongInfo } from '../constants/templates.js';
 
 export class RoomService {
     static instance = null;
-    static HTTP_ROUTE = null;
+    static HTTP_ROUTE = "https://music.norahc.com";
     
     constructor() {
         this.wsService = WebSocketService.getInstance();
@@ -23,7 +23,7 @@ export class RoomService {
 
     async getRoomInfo(roomId) {
         try {
-            const response = await fetch(`${RoomService.getHttpRoute()}/room-info?roomId=${roomId}`);
+            const response = await fetch(`${RoomService.HTTP_ROUTE}/room-info?roomId=${roomId}`);
             if (!response.ok) {
                 throw new Error('Oda bilgileri alınamadı');
             }
@@ -36,16 +36,6 @@ export class RoomService {
         }
     }
 
-    static getHttpRoute() {
-        const base = WebSocketService.getBaseUrl();
-        if (base.startsWith('wss://')) {
-            return `https://${base.slice(6)}`;
-        }
-        if (base.startsWith('ws://')) {
-            return `http://${base.slice(5)}`;
-        }
-        return base;
-    }
 
     updateParticipants(participants) {
         this.participants.clear();
