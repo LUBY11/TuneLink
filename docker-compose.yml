@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  server:
+    build: ./server
+    environment:
+      - PORT=50080
+    ports:
+      - "50080:50080"
+    restart: unless-stopped
