@@ -295,31 +295,6 @@ input[type="text"]::placeholder {
     width: 100%;
 }
 
-.mt-server-settings {
-    background-color: var(--ymt-surface);
-    padding: 10px;
-    border-radius: 10px;
-    border: 1px solid var(--ymt-border);
-    margin-bottom: 12px;
-    display: grid;
-    gap: 8px;
-}
-
-.mt-server-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--ymt-muted);
-}
-
-.mt-server-row {
-    display: flex;
-    gap: 8px;
-}
-
-.mt-server-row input {
-    flex: 1;
-}
 
 .mt-status-text {
     display: flex;

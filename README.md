@@ -14,7 +14,7 @@ Or with docker-compose:
 docker compose up -d
 ```
 
-Docker Hub (latest image) + auto updates:
+Docker Hub images + auto updates:
 - Image: `lubyduby/tunelink-server:latest`
 - `docker compose up -d` uses Watchtower for scheduled updates
 
