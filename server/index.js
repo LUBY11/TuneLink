@@ -260,6 +260,11 @@ wss.on("connection", (ws, req) => {
         id: message.id || null,
         sentAt: Date.now(),
       };
+      console.log("WS chat dispatch", {
+        code,
+        hostOpen: room.host?.readyState === room.host?.OPEN,
+        guestCount: room.guests.size,
+      });
       send(room.host, payload);
       broadcast(room, payload);
     }
