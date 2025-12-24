@@ -62,6 +62,9 @@ export class WebSocketService {
 
                 this.socket.onclose = () => {
                     this.isConnected = false;
+                    // if (!this.manualDisconnect) {
+                    //     this.reconnect(endpoint);
+                    // }
                 };
 
                 this.socket.onerror = (error) => {

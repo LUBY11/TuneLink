@@ -14,28 +14,31 @@ export class YouTubeMusicAPI {
             return null;
         }
 
-        let currentVideoId = null;
-        if (linkElement) {
-            const videoLink = linkElement.getAttribute('href');
-            if (videoLink && videoLink.includes('?')) {
-                const urlParams = new URLSearchParams(videoLink.split('?')[1]);
-                currentVideoId = urlParams.get('v') || null;
-            }
-        }
+        const videoLink = linkElement.getAttribute('href');
+        const urlParams = new URLSearchParams(videoLink.split('?')[1]);
+        const currentVideoId = urlParams.get('v') || null;
 
         let seconds = 0;
 
+        // Video ID değişti mi kontrol et - şarkı değişimini tespit et
         const videoIdChanged = this._lastVideoId !== null && this._lastVideoId !== currentVideoId;
         if (videoIdChanged) {
+            console.log("Şarkı değişimi tespit edildi. Eski ID:", this._lastVideoId, "Yeni ID:", currentVideoId);
+
+            // Yeni şarkı başladığında zamanı daha gerçekçi bir değere ayarla
+            // ProgressBar değeri doğru olmayabilir, player.currentTime daha güvenilir
             if (player.currentTime < 5) {
-                seconds = player.currentTime;
+                seconds = player.currentTime; // Zaten başındaysa mevcut zamanı kullan
             } else {
-                seconds = 0.5;
+                seconds = 0.5; // Şarkının başına yakın bir değer
+                console.log("Yeni şarkı, zaman sıfırlandı");
             }
 
+            // Video ID'yi güncelle
             this._lastVideoId = currentVideoId;
             this._lastVideoTime = seconds;
 
+            // Float olarak gönderelim
             seconds = parseFloat(seconds.toFixed(2));
 
             return {
@@ -48,18 +51,26 @@ export class YouTubeMusicAPI {
             };
         }
 
+        // Normal durum - video değişimi yok
+        // Önceki video zamanı ile şimdiki zaman arasında büyük fark olup olmadığını kontrol et
         let isVideoChanged = false;
+
+        // Önce player.currentTime al - sonra karşılaştıracağız
         let currentVideoTime = player.currentTime;
 
+        // Zaman farkı 5 saniyeden fazla mı? Bu durumda muhtemelen video değişti
         if (Math.abs(this._lastVideoTime - currentVideoTime) > 5) {
             isVideoChanged = true;
+            console.log("Büyük zaman farkı tespit edildi, olası video değişimi, fark:", Math.abs(this._lastVideoTime - currentVideoTime));
         }
 
+        // Eğer video değiştiyse veya zaman çok farklıysa progressBar'ı kontrol et
         if (isVideoChanged) {
             if (progressBar && progressBar.getAttribute('aria-valuenow') !== null) {
                 const progressValue = parseFloat(progressBar.getAttribute('aria-valuenow'));
                 if (!isNaN(progressValue)) {
                     seconds = progressValue;
+                    console.log("Video değişikliği tespit edildi, progressBar değeri kullanılıyor:", seconds);
                 } else {
                     seconds = currentVideoTime;
                 }
@@ -67,6 +78,7 @@ export class YouTubeMusicAPI {
                 seconds = currentVideoTime;
             }
         } else {
+            // Normal durumlarda standart mantığı kullan
             if (progressBar && progressBar.getAttribute('aria-valuenow') !== null) {
                 const progressValue = parseFloat(progressBar.getAttribute('aria-valuenow'));
                 if (!isNaN(progressValue)) {
@@ -79,9 +91,11 @@ export class YouTubeMusicAPI {
             }
         }
 
+        // Son kayıtlı değerleri güncelle
         this._lastVideoTime = seconds;
         this._lastVideoId = currentVideoId;
 
+        // Float olarak gönderelim
         seconds = parseFloat(seconds.toFixed(2));
 
         return {
@@ -104,10 +118,12 @@ export class YouTubeMusicAPI {
         let timeoutId = null;
 
         const handleTrackUpdate = () => {
+            // Zaman aşımı varsa temizle, yeni bir güncelleme yapılıyor
             if (timeoutId) {
                 clearTimeout(timeoutId);
             }
 
+            // 100 ms bekle, bu süre zarfında UI güncellenebilir
             timeoutId = setTimeout(() => {
                 const trackInfo = this.getCurrentTrack();
                 if (!trackInfo) return;
@@ -117,23 +133,22 @@ export class YouTubeMusicAPI {
                     lastTrackInfo.title === trackInfo.title &&
                     lastTrackInfo.status === trackInfo.status;
 
+                // Aynı şarkı ve son güncellemeden bu yana 150ms geçmediyse güncelleme yapma
                 if (isSameTrack && currentTime - lastUpdateTime < 150) {
                     return;
                 }
 
+                // Zamanı kontrol et: Eğer şarkı aynıysa ve zaman farkı 1.5 saniyeden az ise güncelleme yapma
                 const timeChanged = !lastTrackInfo || Math.abs(trackInfo.seconds - lastVideoTime) > 1.5;
                 const statusChanged = !lastTrackInfo || lastTrackInfo.status !== trackInfo.status;
                 const trackChanged = !lastTrackInfo || lastTrackInfo.title !== trackInfo.title;
 
+                // Sadece şarkı, durum veya zaman değiştiyse güncelleme yap
                 if (trackChanged || statusChanged || timeChanged) {
                     const isRoomOwner = wsService && wsService.roles && wsService.roles.includes('owner');
 
                     if (isRoomOwner && wsService && wsService.isConnected) {
-                        try {
-                            wsService.sendMessage(trackInfo);
-                        } catch (error) {
-                            console.warn('Track senkronizasyonu gonderilemedi:', error);
-                        }
+                        wsService.socket.send(JSON.stringify(trackInfo));
                     }
 
                     callback(trackInfo);
@@ -152,7 +167,9 @@ export class YouTubeMusicAPI {
             videoElement.addEventListener('pause', handleTrackUpdate);
             videoElement.addEventListener('seeking', handleTrackUpdate);
 
+            // Zaman güncellemelerini sürekli takip et
             videoElement.addEventListener('timeupdate', () => {
+                // Her 5 saniyede bir kontrol et, ama sadece anlamlı bir değişiklik varsa güncelleme yap
                 if (Math.floor(videoElement.currentTime) % 3 === 0) {
                     handleTrackUpdate();
                 }
@@ -177,6 +194,7 @@ export class YouTubeMusicAPI {
             attributeFilter: ['title', 'src']
         });
 
+        // İlk yükleme için hemen çağır
         handleTrackUpdate();
 
         return observer;
@@ -198,6 +216,7 @@ export class YouTubeMusicAPI {
 
     static updateVideoState(songData) {
         if (!songData || !songData.video_id) {
+            console.error("Geçersiz şarkı verisi:", songData);
             return false;
         }
 
@@ -207,6 +226,7 @@ export class YouTubeMusicAPI {
 
             if (isVideoChanging) {
                 try {
+                    // Şarkı değişiyor, önce yeni şarkıya geçelim
                     const newUrl = `/watch?v=${songData.video_id}`;
                     window.history.pushState({}, '', newUrl);
 
@@ -215,13 +235,16 @@ export class YouTubeMusicAPI {
                     });
                     document.dispatchEvent(navigationEvent);
 
+                    // Yeni video yüklendiğinde zamanı ayarlamak için bir event listener ekleyelim
                     const videoElement = document.querySelector('video');
                     if (videoElement) {
                         const loadHandler = () => {
+                            // Yeni video yüklendiğinde, gelen süreyi ayarla
                             if (typeof songData.seconds === 'number') {
                                 videoElement.currentTime = songData.seconds;
                             }
 
+                            // Durumu güncelle
                             if (songData.status === 0) {
                                 videoElement.pause();
                             } else if (songData.status === 1) {
@@ -234,17 +257,21 @@ export class YouTubeMusicAPI {
                     }
 
                 } catch (e) {
+                    console.error("History API ile değiştirilemedi:", e);
                 }
 
                 return true;
             }
 
+            // Aynı video ise, sadece zamanı ve durumu güncelle
             const videoElement = document.querySelector('video');
             if (videoElement) {
+                // Zamanı güncelle - sadece anlamlı bir fark varsa
                 if (typeof songData.seconds === 'number' && Math.abs(videoElement.currentTime - songData.seconds) > 1.5) {
                     videoElement.currentTime = songData.seconds;
                 }
 
+                // Durumu güncelle
                 const isPlaying = !videoElement.paused;
                 if (songData.status === 0 && isPlaying) {
                     videoElement.pause();
@@ -275,4 +302,5 @@ export class YouTubeMusicAPI {
     }
 }
 
+// Global olarak erişilebilir olması için window objesine ekleyelim
 window.YouTubeMusicAPI = YouTubeMusicAPI;

@@ -4,15 +4,12 @@ import { renderSongInfo } from '../constants/templates.js';
 
 export class RoomService {
     static instance = null;
-    static HTTP_ROUTE = "https://music.norahc.com";
-    
+    static HTTP_ROUTE = "https://music.norahc.com"
     constructor() {
         this.wsService = WebSocketService.getInstance();
         this.currentRoom = null;
         this.isHost = false;
         this.participants = new Map();
-        this.songMessageHandler = null;
-        this.participantUpdateHandler = null;
         this.initializeState();
     }
 
@@ -38,15 +35,14 @@ export class RoomService {
         }
     }
 
-
     updateParticipants(participants) {
         this.participants.clear();
         if (Array.isArray(participants)) {
             participants.forEach(participant => {
-                if (!participant || !participant.client_id) return;
                 this.participants.set(participant.client_id, {
                     client_id: participant.client_id,
-                    roles: Array.isArray(participant.roles) ? participant.roles : ['listener']
+                    roles: participant.roles || ['listener'],
+                    type: 'joined'
                 });
             });
         }
@@ -58,6 +54,7 @@ export class RoomService {
         if (data.type === 'joined') {
             this.participants.set(data.client_id, data);
 
+            // Eğer host isek ve yeni biri katıldıysa, mevcut şarkı durumunu gönder
             if (this.isHost && window.YouTubeMusicAPI) {
                 const currentTrack = window.YouTubeMusicAPI.getCurrentTrack();
                 if (currentTrack) {
@@ -66,6 +63,33 @@ export class RoomService {
             }
         } else if (data.type === 'left') {
             this.participants.delete(data.client_id);
+        }
+
+        const participantsList = document.querySelector('.participants-list');
+        const countBadge = document.querySelector('.participant-count-badge');
+
+        if (participantsList) {
+            const currentClientId = this.wsService.clientId;
+            const allParticipants = Array.from(this.participants.values());
+
+            if (countBadge) {
+                countBadge.textContent = MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', allParticipants.length);
+            }
+
+            const html = allParticipants.map(p => {
+                const isHost = p.roles.includes('owner');
+                const isCurrentUser = p.client_id === currentClientId;
+                return `
+                    <div class="participant ${isCurrentUser ? 'current-user' : ''} ${isHost ? 'host' : ''}">
+                        <div class="participant-avatar">${isHost ? 'H' : (isCurrentUser ? 'S' : 'D')}</div>
+                        <span class="participant-role">
+                            ${isHost ? MESSAGES.UI.HOST : MESSAGES.UI.LISTENER}${isCurrentUser ? ' ' + MESSAGES.UI.YOU : ''}
+                        </span>
+                    </div>
+                `;
+            }).join('');
+
+            participantsList.innerHTML = `<div class="participants-grid">${html}</div>`;
         }
     }
 
@@ -91,15 +115,14 @@ export class RoomService {
     async initializeState() {
         try {
             const state = await this.getExtensionState();
-            if (!state.roomCode) return;
-
-            this.currentRoom = state.roomCode;
-            this.isHost = state.isHost;
-
-            if (this.isHost) {
-                await this.clearExtensionState();
-                this.currentRoom = null;
-                this.isHost = false;
+            if (state.roomCode) {
+                this.currentRoom = state.roomCode;
+                this.isHost = state.isHost;
+                if (this.isHost) {
+                    await this.wsService.createRoom();
+                } else {
+                    await this.wsService.joinRoom(this.currentRoom);
+                }
             }
         } catch (error) {
             console.error('Durum başlatılırken hata:', error);
@@ -109,13 +132,11 @@ export class RoomService {
 
     async createRoom() {
         try {
-            if (this.participantUpdateHandler) {
-                this.wsService.removeEventListener('PARTICIPANTS_UPDATE', this.participantUpdateHandler);
-            }
-            this.participantUpdateHandler = (data) => {
+            const participantUpdateHandler = (data) => {
                 this.handleParticipantUpdate(data);
             };
-            this.wsService.addEventListener('PARTICIPANTS_UPDATE', this.participantUpdateHandler);
+
+            this.wsService.addEventListener('PARTICIPANTS_UPDATE', participantUpdateHandler);
 
             const response = await this.wsService.createRoom();
             if (response.success) {
@@ -137,13 +158,11 @@ export class RoomService {
 
     async joinRoom(roomCode) {
         try {
-            if (this.participantUpdateHandler) {
-                this.wsService.removeEventListener('PARTICIPANTS_UPDATE', this.participantUpdateHandler);
-            }
-            this.participantUpdateHandler = (data) => {
+            const participantUpdateHandler = (data) => {
                 this.handleParticipantUpdate(data);
             };
-            this.wsService.addEventListener('PARTICIPANTS_UPDATE', this.participantUpdateHandler);
+
+            this.wsService.addEventListener('PARTICIPANTS_UPDATE', participantUpdateHandler);
 
             const response = await this.wsService.joinRoom(roomCode);
             if (response.success) {
@@ -151,20 +170,16 @@ export class RoomService {
                 this.isHost = response.isHost;
 
                 if (this.wsService.socket) {
-                    if (this.songMessageHandler) {
-                        this.wsService.socket.removeEventListener('message', this.songMessageHandler);
-                    }
-                    this.songMessageHandler = (event) => {
+                    this.wsService.socket.addEventListener('message', (event) => {
                         try {
                             const songData = JSON.parse(event.data);
-                            if (!this.isHost && songData && !songData.type && songData.title && songData.status !== undefined) {
+                            if (!this.isHost) {
                                 this.handleSongUpdate(songData);
                             }
                         } catch (error) {
                             console.error('Mesaj işlenirken hata:', error);
                         }
-                    };
-                    this.wsService.socket.addEventListener('message', this.songMessageHandler);
+                    });
                 }
 
                 await this.updateExtensionState({
@@ -188,14 +203,6 @@ export class RoomService {
                 this.currentRoom = null;
                 this.isHost = false;
                 this.participants.clear();
-                if (this.songMessageHandler && this.wsService.socket) {
-                    this.wsService.socket.removeEventListener('message', this.songMessageHandler);
-                    this.songMessageHandler = null;
-                }
-                if (this.participantUpdateHandler) {
-                    this.wsService.removeEventListener('PARTICIPANTS_UPDATE', this.participantUpdateHandler);
-                    this.participantUpdateHandler = null;
-                }
                 await this.clearExtensionState();
             }
             return response;
@@ -207,10 +214,6 @@ export class RoomService {
 
     getCurrentClientId() {
         return this.wsService.clientId;
-    }
-
-    getParticipantsSnapshot() {
-        return Array.from(this.participants.values());
     }
 
     addParticipantUpdateListener(callback) {

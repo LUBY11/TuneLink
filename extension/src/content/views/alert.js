@@ -242,4 +242,4 @@ export class Alert {
     info(message, duration = 3000) {
         return this.show(message, 'info', duration);
     }
-}
+} 

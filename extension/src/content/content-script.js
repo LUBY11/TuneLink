@@ -5,18 +5,8 @@ async function initializePanel() {
         const { RoomService } = await import(`${extensionURL}src/services/room-service.js`);
         const { YouTubeMusicAPI } = await import(`${extensionURL}src/content/youtube-music-api.js`);
         const { Alert } = await import(`${extensionURL}src/content/views/alert.js`);
-        const { MESSAGES, setLanguage, getLanguage } = await import(`${extensionURL}src/constants/messages.js`);
+        const { MESSAGES } = await import(`${extensionURL}src/constants/messages.js`);
         const { renderSongInfo, renderEmptySongInfo } = await import(`${extensionURL}src/constants/templates.js`);
-
-        const LANGUAGE_KEY = 'ymt-language';
-        const CHAT_ID_KEY = 'ymt-chat-id';
-        const storedLanguage = localStorage.getItem(LANGUAGE_KEY) || 'ko';
-        let chatClientId = sessionStorage.getItem(CHAT_ID_KEY);
-        if (!chatClientId) {
-            chatClientId = Math.random().toString(36).slice(2, 10);
-            sessionStorage.setItem(CHAT_ID_KEY, chatClientId);
-        }
-        setLanguage(storedLanguage);
 
         class MusicTogetherPanel {
             constructor() {
@@ -24,19 +14,6 @@ async function initializePanel() {
                 this.currentView = null;
                 this.roomService = RoomService.getInstance();
                 this.alert = null;
-                this.currentRoomCode = null;
-                this.isHost = false;
-                this.participantUpdateHandler = null;
-                this.chatMessageHandler = null;
-                this.content = null;
-                this.songInfoElement = null;
-                this.participantsSection = null;
-                this.countBadge = null;
-                this.statusText = null;
-                this.chatMessages = null;
-                this.chatInput = null;
-                this.chatSendButton = null;
-                this.chatSeenIds = new Set();
                 this.createPanel();
                 this.initializeHomeView();
                 this.initializeMusicObserver();
@@ -53,8 +30,9 @@ async function initializePanel() {
             }
 
             updateCurrentSongInfo(trackInfo) {
-                if (this.songInfoElement) {
-                    this.songInfoElement.innerHTML = renderSongInfo(trackInfo);
+                const songInfoElement = document.getElementById('current-song-info');
+                if (songInfoElement) {
+                    songInfoElement.innerHTML = renderSongInfo(trackInfo);
                 }
             }
 
@@ -65,12 +43,6 @@ async function initializePanel() {
                     <div class="mt-toggle"></div>
                     <div class="mt-header">
                         <h2>${MESSAGES.UI.APP_TITLE}</h2>
-                        <div class="mt-header-actions">
-                            <select id="mt-language-select" title="${MESSAGES.UI.LANGUAGE}">
-                                <option value="ko">한국어</option>
-                                <option value="en">English</option>
-                            </select>
-                        </div>
                     </div>
                     <div class="mt-content">
                         <div class="mt-status">${MESSAGES.CONNECTION.OFFLINE}</div>
@@ -88,34 +60,24 @@ async function initializePanel() {
                     </div>
                 `;
                 document.body.appendChild(this.panel);
-                this.content = this.panel.querySelector('.mt-content');
 
+                // Alert bileşenini başlat
                 this.alert = new Alert(this.panel.querySelector('#alert-container'));
 
-                const languageSelect = this.panel.querySelector('#mt-language-select');
-                if (languageSelect) {
-                    languageSelect.value = getLanguage();
-                    languageSelect.addEventListener('change', () => {
-                        const nextLanguage = languageSelect.value;
-                        localStorage.setItem(LANGUAGE_KEY, nextLanguage);
-                        setLanguage(nextLanguage);
-                        this.refreshView();
-                    });
-                }
-
+                // Panel açma/kapama mantığı
                 const toggleBtn = this.panel.querySelector('.mt-toggle');
                 toggleBtn.addEventListener('click', () => {
                     this.panel.classList.toggle('open');
                     chrome.storage.local.set({ 'panelOpen': this.panel.classList.contains('open') });
                 });
 
+                // Panel durumunu kayıtlı değerden al
                 chrome.storage.local.get('panelOpen', (result) => {
                     if (result.panelOpen) {
                         this.panel.classList.add('open');
                     }
                 });
 
-                this.songInfoElement = this.panel.querySelector('#current-song-info');
                 const currentTrack = YouTubeMusicAPI.getCurrentTrack();
                 if (currentTrack) {
                     this.updateCurrentSongInfo(currentTrack);
@@ -123,9 +85,9 @@ async function initializePanel() {
             }
 
             initializeHomeView() {
-                const createRoomBtn = this.panel.querySelector('#create-room-btn');
-                const joinRoomBtn = this.panel.querySelector('#join-room-btn');
-                const roomCodeInput = this.panel.querySelector('#room-code');
+                const createRoomBtn = document.getElementById('create-room-btn');
+                const joinRoomBtn = document.getElementById('join-room-btn');
+                const roomCodeInput = document.getElementById('room-code');
 
                 createRoomBtn.addEventListener('click', async () => {
                     try {
@@ -167,13 +129,11 @@ async function initializePanel() {
             }
 
             async showRoomView(roomCode, isHost, initialRoomInfo = null) {
-                this.currentRoomCode = roomCode;
-                this.isHost = isHost;
-
-                this.content.innerHTML = `
+                const content = document.querySelector('.mt-content');
+                content.innerHTML = `
                     <div class="mt-status online">
                         <div class="mt-status-text">${MESSAGES.CONNECTION.ONLINE}</div>
-                        <div class="participant-count-badge">${MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', '1')}</div>
+                        <div class="participant-count-badge">1 ${MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', '1')}</div>
                     </div>
                     <div id="current-song-info" class="mt-song-info">
                         ${renderEmptySongInfo()}
@@ -181,20 +141,6 @@ async function initializePanel() {
                     <div class="mt-room-info">
                         <p>${MESSAGES.UI.ROOM_CODE_LABEL} <span id="current-room-code">${roomCode}</span></p>
                         <button id="leave-room-btn">${MESSAGES.UI.LEAVE_ROOM}</button>
-                    </div>
-                    ${isHost ? `
-                    <div class="mt-room-controls">
-                        <div class="mt-room-controls-title">${MESSAGES.UI.ROOM_CONTROLS}</div>
-                        <button id="sync-playback-btn" class="primary">${MESSAGES.UI.SYNC_PLAYBACK}</button>
-                    </div>
-                    ` : ''}
-                    <div class="mt-chat-section">
-                        <div class="mt-chat-title">${MESSAGES.UI.CHAT}</div>
-                        <div class="mt-chat-messages" id="mt-chat-messages"></div>
-                        <div class="mt-chat-input">
-                            <input type="text" id="mt-chat-input" placeholder="${MESSAGES.UI.CHAT_PLACEHOLDER}">
-                            <button id="mt-chat-send" class="primary">${MESSAGES.UI.SEND}</button>
-                        </div>
                     </div>
                     <div class="mt-participants-section">
                         <h3>${MESSAGES.UI.PARTICIPANTS}</h3>
@@ -205,14 +151,8 @@ async function initializePanel() {
                     <div id="alert-container" class="mt-alert-container"></div>
                 `;
 
-                this.alert = new Alert(this.content.querySelector('#alert-container'));
-                this.songInfoElement = this.content.querySelector('#current-song-info');
-                this.participantsSection = this.content.querySelector('.participants-list');
-                this.countBadge = this.content.querySelector('.participant-count-badge');
-                this.statusText = this.content.querySelector('.mt-status-text');
-                this.chatMessages = this.content.querySelector('#mt-chat-messages');
-                this.chatInput = this.content.querySelector('#mt-chat-input');
-                this.chatSendButton = this.content.querySelector('#mt-chat-send');
+                // Alert bileşenini yeniden başlat
+                this.alert = new Alert(content.querySelector('#alert-container'));
 
                 const currentTrack = YouTubeMusicAPI.getCurrentTrack();
                 if (currentTrack) {
@@ -234,86 +174,20 @@ async function initializePanel() {
                     }
                 });
 
-                if (this.participantUpdateHandler) {
-                    this.roomService.removeParticipantUpdateListener(this.participantUpdateHandler);
-                }
-                this.participantUpdateHandler = (participants) => {
-                    this.roomService.handleParticipantUpdate(participants);
-                    this.updateParticipantsList(this.roomService.getParticipantsSnapshot());
-                };
-                this.roomService.addParticipantUpdateListener(this.participantUpdateHandler);
-
-                const syncPlaybackBtn = document.getElementById('sync-playback-btn');
-                if (syncPlaybackBtn) {
-                    syncPlaybackBtn.addEventListener('click', () => {
-                        try {
-                            const trackInfo = YouTubeMusicAPI.getCurrentTrack();
-                            if (!trackInfo) {
-                                this.alert.warning(MESSAGES.MUSIC.NO_TRACK);
-                                return;
-                            }
-                            this.roomService.wsService.sendMessage(trackInfo);
-                            this.alert.success(MESSAGES.MUSIC.SYNC_SUCCESS);
-                        } catch (error) {
-                            console.error('Senkronizasyon hatasi:', error);
-                            this.alert.error(MESSAGES.MUSIC.SYNC_ERROR);
-                        }
-                    });
-                }
-
-                const sendChat = () => {
-                    if (!this.chatInput) return;
-                    const text = this.chatInput.value.trim();
-                    if (!text) return;
-                    try {
-                        const id = `${chatClientId}-${Date.now()}`;
-                        const payload = {
-                            type: 'chat',
-                            text,
-                            senderId: chatClientId,
-                            id,
-                            code: this.currentRoomCode
-                        };
-                        this.appendChatMessage(payload);
-                        this.roomService.wsService.sendMessage(payload);
-                        this.chatInput.value = '';
-                    } catch (error) {
-                        console.error('Chat gonderme hatasi:', error);
-                        this.alert.error(MESSAGES.CONNECTION.ERROR);
-                    }
-                };
-
-                if (this.chatSendButton) {
-                    this.chatSendButton.addEventListener('click', sendChat);
-                }
-
-                if (this.chatInput) {
-                    this.chatInput.addEventListener('keydown', (event) => {
-                        if (event.key === 'Enter') {
-                            event.preventDefault();
-                            sendChat();
-                        }
-                    });
-                }
-
-                if (this.chatMessageHandler) {
-                    this.roomService.wsService.removeEventListener('chat', this.chatMessageHandler);
-                }
-                this.chatMessageHandler = (data) => {
-                    this.appendChatMessage(data);
-                };
-                this.roomService.wsService.addEventListener('chat', this.chatMessageHandler);
+                this.roomService.addParticipantUpdateListener((participants) => {
+                    this.updateParticipantsList(participants);
+                });
 
                 if (initialRoomInfo && Array.isArray(initialRoomInfo)) {
-                    this.roomService.updateParticipants(initialRoomInfo);
-                    this.updateParticipantsList(this.roomService.getParticipantsSnapshot());
+                    this.updateParticipantsList(initialRoomInfo);
                 } else {
                     try {
                         const roomInfo = await this.roomService.getRoomInfo(roomCode);
-                        this.updateParticipantsList(this.roomService.getParticipantsSnapshot());
+                        this.updateParticipantsList(roomInfo);
                     } catch (error) {
-                        if (this.participantsSection) {
-                            this.participantsSection.innerHTML = `
+                        const participantsSection = document.querySelector('.participants-list');
+                        if (participantsSection) {
+                            participantsSection.innerHTML = `
                                 <div class="error-message">
                                     ${MESSAGES.ROOM.PARTICIPANTS_ERROR}
                                 </div>
@@ -325,31 +199,20 @@ async function initializePanel() {
             }
 
             updateParticipantsList(participants) {
-                if (this.participantsSection && Array.isArray(participants)) {
-                    const activeParticipants = participants.filter(Boolean);
+                const participantsSection = document.querySelector('.participants-list');
+                if (participantsSection && Array.isArray(participants)) {
+                    const activeParticipants = participants.filter(p => p.type !== 'left');
+                    const participantCount = activeParticipants.length;
                     const currentClientId = this.roomService.getCurrentClientId();
-                    const participantCount = activeParticipants.length || 1;
 
-                    if (this.countBadge) {
-                        this.countBadge.textContent = MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', participantCount);
-                    }
-
-                    if (activeParticipants.length === 0) {
-                        this.participantsSection.innerHTML = `
-                            <div class="participant current-user ${this.isHost ? 'host' : ''}">
-                                <div class="participant-avatar">${this.isHost ? 'H' : 'S'}</div>
-                                <span class="participant-role">
-                                    ${this.isHost ? MESSAGES.UI.HOST : MESSAGES.UI.LISTENER} ${MESSAGES.UI.YOU}
-                                </span>
-                            </div>
-                        `;
-                        return;
+                    const countBadge = document.querySelector('.participant-count-badge');
+                    if (countBadge) {
+                        countBadge.textContent = MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', participantCount);
                     }
 
                     const participantsHtml = activeParticipants.map(participant => {
-                        const roles = Array.isArray(participant.roles) ? participant.roles : ['listener'];
-                        const isHost = roles.includes('owner');
-                        const isListener = roles.includes('listener');
+                        const isHost = participant.roles.includes('owner');
+                        const isListener = participant.roles.includes('listener');
                         const isCurrentUser = participant.client_id === currentClientId;
                         const roleText = isHost ? MESSAGES.UI.HOST : (isListener ? MESSAGES.UI.LISTENER : MESSAGES.UI.PARTICIPANT);
                         const avatarText = isHost ? 'H' : (isCurrentUser ? 'S' : 'D');
@@ -366,7 +229,7 @@ async function initializePanel() {
                         `;
                     }).join('');
 
-                    this.participantsSection.innerHTML = `
+                    participantsSection.innerHTML = `
                         <div class="participants-grid">
                             ${participantsHtml}
                         </div>
@@ -374,38 +237,9 @@ async function initializePanel() {
                 }
             }
 
-            appendChatMessage(message) {
-                if (!this.chatMessages || !message || !message.text) return;
-                if (message.id) {
-                    if (this.chatSeenIds.has(message.id)) {
-                        return;
-                    }
-                    this.chatSeenIds.add(message.id);
-                    if (this.chatSeenIds.size > 200) {
-                        const firstId = this.chatSeenIds.values().next().value;
-                        if (firstId) {
-                            this.chatSeenIds.delete(firstId);
-                        }
-                    }
-                }
-                const isSelf = message.senderId && message.senderId === chatClientId;
-                const roleLabel = message.role === 'host' ? MESSAGES.UI.HOST : MESSAGES.UI.PARTICIPANT;
-                const shortId = message.senderId ? message.senderId.slice(-4) : '????';
-                const label = isSelf ? MESSAGES.UI.YOU : `${roleLabel}#${shortId}`;
-                const wrapper = document.createElement('div');
-                wrapper.className = `mt-chat-message ${isSelf ? 'self' : ''}`;
-                wrapper.innerHTML = `
-                    <div class="mt-chat-meta">${label}</div>
-                    <div class="mt-chat-bubble">${message.text}</div>
-                `;
-                this.chatMessages.appendChild(wrapper);
-                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-            }
-
             showHomeView() {
-                this.currentRoomCode = null;
-                this.isHost = false;
-                this.content.innerHTML = `
+                const content = document.querySelector('.mt-content');
+                content.innerHTML = `
                     <div class="mt-status">
                         <div class="mt-status-text">${MESSAGES.CONNECTION.OFFLINE}</div>
                         <div class="participant-count-badge">${MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', '0')}</div>
@@ -423,19 +257,8 @@ async function initializePanel() {
                     <div id="alert-container" class="mt-alert-container"></div>
                 `;
 
-                this.alert = new Alert(this.content.querySelector('#alert-container'));
-                this.songInfoElement = this.content.querySelector('#current-song-info');
-                this.participantsSection = null;
-                this.countBadge = this.content.querySelector('.participant-count-badge');
-                this.statusText = this.content.querySelector('.mt-status-text');
-                this.chatMessages = null;
-                this.chatInput = null;
-                this.chatSendButton = null;
-
-                if (this.chatMessageHandler) {
-                    this.roomService.wsService.removeEventListener('chat', this.chatMessageHandler);
-                    this.chatMessageHandler = null;
-                }
+                // Alert bileşenini yeniden başlat
+                this.alert = new Alert(content.querySelector('#alert-container'));
 
                 const currentTrack = YouTubeMusicAPI.getCurrentTrack();
                 if (currentTrack) {
@@ -443,26 +266,6 @@ async function initializePanel() {
                 }
 
                 this.initializeHomeView();
-            }
-
-            refreshView() {
-                const headerTitle = this.panel.querySelector('.mt-header h2');
-                if (headerTitle) {
-                    headerTitle.textContent = MESSAGES.UI.APP_TITLE;
-                }
-                const languageSelect = this.panel.querySelector('#mt-language-select');
-                if (languageSelect) {
-                    languageSelect.title = MESSAGES.UI.LANGUAGE;
-                }
-                const currentTrack = YouTubeMusicAPI.getCurrentTrack();
-                if (this.currentRoomCode) {
-                    this.showRoomView(this.currentRoomCode, this.isHost);
-                } else {
-                    this.showHomeView();
-                }
-                if (currentTrack) {
-                    this.updateCurrentSongInfo(currentTrack);
-                }
             }
         }
 
