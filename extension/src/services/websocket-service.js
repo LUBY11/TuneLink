@@ -63,6 +63,16 @@ export class WebSocketService {
                         return;
                     }
 
+                    if (!data.type && (data.title || data.video_id || typeof data.seconds === 'number' || typeof data.status === 'number')) {
+                        const listeners = this.eventListeners.get('SONG_UPDATE');
+                        if (listeners) {
+                            for (const listener of listeners) {
+                                listener(data);
+                            }
+                        }
+                        return;
+                    }
+
                     const callback = this.messageCallbacks.get(data.type);
                     if (callback) {
                         callback(data);

@@ -11,6 +11,7 @@ export class RoomService {
         this.currentRoom = null;
         this.isHost = false;
         this.participants = new Map();
+        this.songUpdateHandler = null;
         this.initializeState();
     }
 
@@ -169,19 +170,15 @@ export class RoomService {
             if (response.success) {
                 this.currentRoom = response.roomCode;
                 this.isHost = response.isHost;
-
-                if (this.wsService.socket) {
-                    this.wsService.socket.addEventListener('message', (event) => {
-                        try {
-                            const songData = JSON.parse(event.data);
-                            if (!this.isHost) {
-                                this.handleSongUpdate(songData);
-                            }
-                        } catch (error) {
-                            console.error('Mesaj işlenirken hata:', error);
-                        }
-                    });
+                if (this.songUpdateHandler) {
+                    this.removeSongUpdateListener(this.songUpdateHandler);
                 }
+                this.songUpdateHandler = (songData) => {
+                    if (!this.isHost) {
+                        this.handleSongUpdate(songData);
+                    }
+                };
+                this.addSongUpdateListener(this.songUpdateHandler);
 
                 await this.updateExtensionState({
                     roomCode: this.currentRoom,
@@ -204,6 +201,10 @@ export class RoomService {
                 this.currentRoom = null;
                 this.isHost = false;
                 this.participants.clear();
+                if (this.songUpdateHandler) {
+                    this.removeSongUpdateListener(this.songUpdateHandler);
+                    this.songUpdateHandler = null;
+                }
                 await this.clearExtensionState();
             }
             return response;
