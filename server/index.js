@@ -1,3 +1,4 @@
+import http from "http";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT) || 50080;
@@ -34,6 +35,18 @@ function roomParticipants(room) {
   return 1 + room.guests.size;
 }
 
+function roomInfo(room) {
+  const participants = [];
+  if (room.host?.clientId) {
+    participants.push({ client_id: room.host.clientId, roles: ["owner"] });
+  }
+  for (const guest of room.guests) {
+    if (guest.clientId) {
+      participants.push({ client_id: guest.clientId, roles: ["listener"] });
+    }
+  }
+  return participants;
+}
 
 function send(socket, payload) {
   if (socket.readyState === socket.OPEN) {
@@ -58,7 +71,53 @@ function notifyRoomUpdated(room) {
   broadcast(room, message);
 }
 
-const wss = new WebSocketServer({ port: PORT });
+function notifyParticipant(room, type, socket) {
+  const payload = {
+    type,
+    client_id: socket.clientId || null,
+    roles: socket.role === "host" ? ["owner"] : ["listener"],
+  };
+  send(room.host, payload);
+  broadcast(room, payload);
+}
+
+function sendHandshake(ws, room) {
+  send(ws, {
+    client_id: ws.clientId,
+    room_id: room.code,
+    roles: ws.role === "host" ? ["owner"] : ["listener"],
+  });
+}
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+    res.end();
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/room-info") {
+    const roomId = String(url.searchParams.get("roomId") || "").toUpperCase();
+    const room = rooms.get(roomId);
+    const payload = room ? roomInfo(room) : [];
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify(payload));
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "text/plain" });
+  res.end("Not found");
+});
+
+const wss = new WebSocketServer({ server });
 
 wss.on("error", (error) => {
   console.error("WebSocket server error:", error);
@@ -98,12 +157,14 @@ wss.on("connection", (ws) => {
       const room = createRoom(ws);
       ws.roomCode = room.code;
       ws.role = "host";
+      sendHandshake(ws, room);
       send(ws, {
         type: "room-created",
         code: room.code,
         role: "host",
         participants: roomParticipants(room),
       });
+      notifyParticipant(room, "joined", ws);
       return;
     }
 
@@ -120,6 +181,7 @@ wss.on("connection", (ws) => {
       ws.roomCode = code;
       ws.role = "guest";
       room.guests.add(ws);
+      sendHandshake(ws, room);
       send(ws, {
         type: "room-joined",
         code,
@@ -127,6 +189,7 @@ wss.on("connection", (ws) => {
         participants: roomParticipants(room),
         state: room.state,
       });
+      notifyParticipant(room, "joined", ws);
       notifyRoomUpdated(room);
       return;
     }
@@ -178,7 +241,7 @@ wss.on("connection", (ws) => {
         sentAt: Date.now(),
       };
       console.log("WS chat dispatch", {
-        code,
+        code: ws.roomCode,
         hostOpen: room.host?.readyState === room.host?.OPEN,
         guestCount: room.guests.size,
       });
@@ -207,6 +270,7 @@ function leaveRoom(ws, isDisconnect = false) {
     rooms.delete(ws.roomCode);
   } else {
     room.guests.delete(ws);
+    notifyParticipant(room, "left", ws);
     notifyRoomUpdated(room);
   }
 
@@ -217,5 +281,9 @@ function leaveRoom(ws, isDisconnect = false) {
     send(ws, { type: "room-left" });
   }
 }
+
+server.listen(PORT, () => {
+  console.log(`WebSocket server listening on ws://localhost:${PORT}`);
+});
 
 console.log(`WebSocket server listening on ws://localhost:${PORT}`);
