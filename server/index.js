@@ -126,6 +126,55 @@ wss.on("error", (error) => {
   console.error("WebSocket server error:", error);
 });
 
+function handleLegacyConnection(ws, reqUrl) {
+  const url = new URL(reqUrl || "/", "http://localhost");
+  if (url.pathname === "/create-room") {
+    if (ws.roomCode) {
+      leaveRoom(ws);
+    }
+    const room = createRoom(ws);
+    ws.roomCode = room.code;
+    ws.role = "host";
+    sendHandshake(ws, room);
+    send(ws, {
+      type: "room-created",
+      code: room.code,
+      role: "host",
+      participants: roomParticipants(room),
+    });
+    notifyParticipant(room, "joined", ws);
+    return true;
+  }
+
+  if (url.pathname === "/join-room") {
+    if (ws.roomCode) {
+      leaveRoom(ws);
+    }
+    const code = String(url.searchParams.get("roomId") || "").toUpperCase();
+    const room = rooms.get(code);
+    if (!room) {
+      send(ws, { type: "error", message: "Room not found" });
+      return true;
+    }
+    ws.roomCode = code;
+    ws.role = "guest";
+    room.guests.add(ws);
+    sendHandshake(ws, room);
+    send(ws, {
+      type: "room-joined",
+      code,
+      role: "guest",
+      participants: roomParticipants(room),
+      state: room.state,
+    });
+    notifyParticipant(room, "joined", ws);
+    notifyRoomUpdated(room);
+    return true;
+  }
+
+  return false;
+}
+
 wss.on("connection", (ws, req) => {
   ws.roomCode = null;
   ws.role = null;
@@ -139,6 +188,10 @@ wss.on("connection", (ws, req) => {
   }
   if (requestUrl.includes("/create-room") || requestUrl.includes("/join-room")) {
     console.warn("Legacy WS path detected", { url: requestUrl });
+  }
+
+  if (handleLegacyConnection(ws, requestUrl)) {
+    return;
   }
 
   ws.on("error", (error) => {
