@@ -238,7 +238,8 @@ async function initializePanel() {
                     this.roomService.removeParticipantUpdateListener(this.participantUpdateHandler);
                 }
                 this.participantUpdateHandler = (participants) => {
-                    this.updateParticipantsList(participants);
+                    this.roomService.handleParticipantUpdate(participants);
+                    this.updateParticipantsList(this.roomService.getParticipantsSnapshot());
                 };
                 this.roomService.addParticipantUpdateListener(this.participantUpdateHandler);
 
@@ -304,11 +305,12 @@ async function initializePanel() {
                 this.roomService.wsService.addEventListener('chat', this.chatMessageHandler);
 
                 if (initialRoomInfo && Array.isArray(initialRoomInfo)) {
-                    this.updateParticipantsList(initialRoomInfo);
+                    this.roomService.updateParticipants(initialRoomInfo);
+                    this.updateParticipantsList(this.roomService.getParticipantsSnapshot());
                 } else {
                     try {
                         const roomInfo = await this.roomService.getRoomInfo(roomCode);
-                        this.updateParticipantsList(roomInfo);
+                        this.updateParticipantsList(this.roomService.getParticipantsSnapshot());
                     } catch (error) {
                         if (this.participantsSection) {
                             this.participantsSection.innerHTML = `
@@ -324,7 +326,7 @@ async function initializePanel() {
 
             updateParticipantsList(participants) {
                 if (this.participantsSection && Array.isArray(participants)) {
-                    let activeParticipants = participants.filter(p => p.type !== 'left');
+                    const activeParticipants = participants.filter(Boolean);
                     const currentClientId = this.roomService.getCurrentClientId();
                     const participantCount = activeParticipants.length || 1;
 
@@ -345,8 +347,9 @@ async function initializePanel() {
                     }
 
                     const participantsHtml = activeParticipants.map(participant => {
-                        const isHost = participant.roles.includes('owner');
-                        const isListener = participant.roles.includes('listener');
+                        const roles = Array.isArray(participant.roles) ? participant.roles : ['listener'];
+                        const isHost = roles.includes('owner');
+                        const isListener = roles.includes('listener');
                         const isCurrentUser = participant.client_id === currentClientId;
                         const roleText = isHost ? MESSAGES.UI.HOST : (isListener ? MESSAGES.UI.LISTENER : MESSAGES.UI.PARTICIPANT);
                         const avatarText = isHost ? 'H' : (isCurrentUser ? 'S' : 'D');

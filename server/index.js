@@ -117,6 +117,7 @@ const server = http.createServer((req, res) => {
   res.end("Not found");
 });
 
+const DEBUG_LOGS = process.env.DEBUG_LOGS === "1";
 const wss = new WebSocketServer({ server });
 
 wss.on("error", (error) => {
@@ -127,9 +128,11 @@ wss.on("connection", (ws) => {
   ws.roomCode = null;
   ws.role = null;
   ws.clientId = randomId();
-  console.log("WS connection", {
-    clientId: ws.clientId,
-  });
+  if (DEBUG_LOGS) {
+    console.log("WS connection", {
+      clientId: ws.clientId,
+    });
+  }
 
   ws.on("error", (error) => {
     console.error("WebSocket client error:", error);
@@ -143,12 +146,14 @@ wss.on("connection", (ws) => {
       console.log("WS message parse failed");
       return;
     }
-    console.log("WS message", {
-      type: message?.type,
-      role: ws.role,
-      roomCode: ws.roomCode,
-      code: message?.code,
-    });
+    if (DEBUG_LOGS) {
+      console.log("WS message", {
+        type: message?.type,
+        role: ws.role,
+        roomCode: ws.roomCode,
+        code: message?.code,
+      });
+    }
 
     if (message.type === "create") {
       if (ws.roomCode) {
@@ -217,10 +222,12 @@ wss.on("connection", (ws) => {
         typeof message.seconds === "number" ||
         typeof message.status === "number";
       if (hasTrackShape) {
-        console.log("WS track dispatch", {
-          code: ws.roomCode,
-          guestCount: room.guests.size,
-        });
+        if (DEBUG_LOGS) {
+          console.log("WS track dispatch", {
+            code: ws.roomCode,
+            guestCount: room.guests.size,
+          });
+        }
         broadcast(room, message);
       }
       return;
@@ -240,11 +247,13 @@ wss.on("connection", (ws) => {
         id: message.id || null,
         sentAt: Date.now(),
       };
-      console.log("WS chat dispatch", {
-        code: ws.roomCode,
-        hostOpen: room.host?.readyState === room.host?.OPEN,
-        guestCount: room.guests.size,
-      });
+      if (DEBUG_LOGS) {
+        console.log("WS chat dispatch", {
+          code: ws.roomCode,
+          hostOpen: room.host?.readyState === room.host?.OPEN,
+          guestCount: room.guests.size,
+        });
+      }
       send(room.host, payload);
       broadcast(room, payload);
     }
@@ -267,6 +276,10 @@ function leaveRoom(ws, isDisconnect = false) {
   if (ws.role === "host") {
     const payload = { type: "error", message: "Host left the room" };
     broadcast(room, payload);
+    for (const guest of room.guests) {
+      guest.roomCode = null;
+      guest.role = null;
+    }
     rooms.delete(ws.roomCode);
   } else {
     room.guests.delete(ws);
@@ -285,5 +298,3 @@ function leaveRoom(ws, isDisconnect = false) {
 server.listen(PORT, () => {
   console.log(`WebSocket server listening on ws://localhost:${PORT}`);
 });
-
-console.log(`WebSocket server listening on ws://localhost:${PORT}`);

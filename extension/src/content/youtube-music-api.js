@@ -14,9 +14,14 @@ export class YouTubeMusicAPI {
             return null;
         }
 
-        const videoLink = linkElement.getAttribute('href');
-        const urlParams = new URLSearchParams(videoLink.split('?')[1]);
-        const currentVideoId = urlParams.get('v') || null;
+        let currentVideoId = null;
+        if (linkElement) {
+            const videoLink = linkElement.getAttribute('href');
+            if (videoLink && videoLink.includes('?')) {
+                const urlParams = new URLSearchParams(videoLink.split('?')[1]);
+                currentVideoId = urlParams.get('v') || null;
+            }
+        }
 
         let seconds = 0;
 
@@ -124,7 +129,11 @@ export class YouTubeMusicAPI {
                     const isRoomOwner = wsService && wsService.roles && wsService.roles.includes('owner');
 
                     if (isRoomOwner && wsService && wsService.isConnected) {
-                        wsService.socket.send(JSON.stringify(trackInfo));
+                        try {
+                            wsService.sendMessage(trackInfo);
+                        } catch (error) {
+                            console.warn('Track senkronizasyonu gonderilemedi:', error);
+                        }
                     }
 
                     callback(trackInfo);

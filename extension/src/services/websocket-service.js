@@ -12,6 +12,8 @@ export class WebSocketService {
         this.messageCallbacks = new Map();
         this.eventListeners = new Map();
         this.manualDisconnect = false;
+        this.connectPromise = null;
+        this.pendingRoomRequest = null;
     }
 
     static getInstance() {
@@ -21,16 +23,19 @@ export class WebSocketService {
         return WebSocketService.instance;
     }
 
-    connect(endpoint) {
-        return new Promise((resolve, reject) => {
+    connect() {
+        if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+            return this.connectPromise || Promise.resolve();
+        }
+        this.connectPromise = new Promise((resolve, reject) => {
             try {
                 this.manualDisconnect = false;
-                let resolved = false;
                 const baseUrl = WebSocketService.getBaseUrl();
-                this.socket = new WebSocket(`${baseUrl}${endpoint}`);
+                this.socket = new WebSocket(baseUrl);
 
                 this.socket.onopen = () => {
                     this.isConnected = true;
+                    resolve();
                 };
 
                 this.socket.onmessage = (event) => {
@@ -56,12 +61,20 @@ export class WebSocketService {
                         this.clientId = data.client_id;
                         this.roomId = data.room_id;
                         this.roles = data.roles;
-                        if (!resolved) {
-                            resolved = true;
-                            resolve({
+                        return;
+                    }
+
+                    if (data.type === 'room-joined' || data.type === 'room-created') {
+                        if (this.pendingRoomRequest) {
+                            const { resolve: pendingResolve, timeoutId } = this.pendingRoomRequest;
+                            clearTimeout(timeoutId);
+                            this.pendingRoomRequest = null;
+                            this.roomId = data.code;
+                            this.roles = data.role === 'host' ? ['owner'] : ['listener'];
+                            pendingResolve({
                                 success: true,
                                 roomCode: this.roomId,
-                                isHost: this.roles.includes('owner')
+                                isHost: data.role === 'host'
                             });
                         }
                         return;
@@ -82,17 +95,34 @@ export class WebSocketService {
 
                 this.socket.onclose = () => {
                     this.isConnected = false;
+                    this.connectPromise = null;
+                    if (this.pendingRoomRequest) {
+                        const { reject: pendingReject } = this.pendingRoomRequest;
+                        this.pendingRoomRequest = null;
+                        pendingReject(new Error('WebSocket disconnected'));
+                    }
+                    if (!this.manualDisconnect) {
+                        this.reconnect();
+                    }
                 };
 
                 this.socket.onerror = (error) => {
                     console.error('WebSocket hatası:', error);
+                    this.connectPromise = null;
+                    if (this.pendingRoomRequest) {
+                        const { reject: pendingReject } = this.pendingRoomRequest;
+                        this.pendingRoomRequest = null;
+                        pendingReject(error);
+                    }
                     reject(error);
                 };
             } catch (error) {
                 console.error('WebSocket bağlantı hatası:', error);
+                this.connectPromise = null;
                 reject(error);
             }
         });
+        return this.connectPromise;
     }
 
     static getBaseUrl() {
@@ -110,16 +140,8 @@ export class WebSocketService {
 
     async createRoom() {
         try {
-            const response = await this.connect('/create-room');
-            if (response.success) {
-                if (window.YouTubeMusicAPI) {
-                    const currentTrack = window.YouTubeMusicAPI.getCurrentTrack();
-                    if (currentTrack) {
-                        this.sendMessage(currentTrack);
-                    }
-                }
-            }
-            return response;
+            await this.connect();
+            return await this.sendRoomRequest({ type: 'create' });
         } catch (error) {
             console.error('Oda oluşturulurken hata:', error);
             throw error;
@@ -128,7 +150,8 @@ export class WebSocketService {
 
     async joinRoom(roomCode) {
         try {
-            return await this.connect(`/join-room?roomId=${roomCode}`);
+            await this.connect();
+            return await this.sendRoomRequest({ type: 'join', code: roomCode });
         } catch (error) {
             console.error('Odaya katılırken hata:', error);
             throw error;
@@ -138,8 +161,17 @@ export class WebSocketService {
     async leaveRoom() {
         if (this.socket) {
             this.manualDisconnect = true;
+            if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+                try {
+                    this.sendMessage({ type: 'leave' });
+                } catch (error) {
+                    console.warn('WebSocket ayrilma mesaji gonderilemedi:', error);
+                }
+            }
             this.socket.close();
         }
+        this.connectPromise = null;
+        this.pendingRoomRequest = null;
         this.clientId = null;
         this.roomId = null;
         this.roles = [];
@@ -161,16 +193,33 @@ export class WebSocketService {
     }
 
     sendMessage(message) {
-        if (!this.isConnected) {
+        if (!this.socket || !this.isConnected || this.socket.readyState !== WebSocket.OPEN) {
             throw new Error('WebSocket bağlantısı yok');
         }
         this.socket.send(JSON.stringify(message));
     }
 
+    sendRoomRequest(payload) {
+        if (this.pendingRoomRequest) {
+            this.pendingRoomRequest.reject(new Error('Room request already pending'));
+            this.pendingRoomRequest = null;
+        }
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                if (this.pendingRoomRequest) {
+                    this.pendingRoomRequest = null;
+                    reject(new Error('Room request timeout'));
+                }
+            }, 8000);
+            this.pendingRoomRequest = { resolve, reject, timeoutId };
+            this.sendMessage(payload);
+        });
+    }
+
     reconnect(endpoint) {
         setTimeout(() => {
             if (!this.isConnected) {
-                this.connect(endpoint).catch(console.error);
+                this.connect().catch(console.error);
             }
         }, 5000);
     }
