@@ -245,6 +245,21 @@ wss.on("connection", (ws, req) => {
       broadcast(room, { type: "state", state: message.state });
     }
 
+    if (!message.type) {
+      if (ws.role !== "host" || !ws.roomCode) return;
+      const room = rooms.get(ws.roomCode);
+      if (!room) return;
+      const hasTrackShape =
+        typeof message.title === "string" ||
+        typeof message.video_id === "string" ||
+        typeof message.seconds === "number" ||
+        typeof message.status === "number";
+      if (hasTrackShape) {
+        broadcast(room, message);
+      }
+      return;
+    }
+
     if (message.type === "chat") {
       const code = ws.roomCode || String(message.code || "").toUpperCase();
       if (!code) return;
