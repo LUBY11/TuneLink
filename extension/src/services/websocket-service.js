@@ -1,6 +1,6 @@
 export class WebSocketService {
     static instance = null;
-    static WS_BASE_URL = 'ws://localhost:50080';
+    static WS_BASE_URL = 'wss://music.norahc.com';
     static BASE_URL_KEY = 'ymt-ws-base-url';
 
     constructor() {
