@@ -324,12 +324,24 @@ async function initializePanel() {
 
             updateParticipantsList(participants) {
                 if (this.participantsSection && Array.isArray(participants)) {
-                    const activeParticipants = participants.filter(p => p.type !== 'left');
-                    const participantCount = activeParticipants.length;
+                    let activeParticipants = participants.filter(p => p.type !== 'left');
                     const currentClientId = this.roomService.getCurrentClientId();
+                    const participantCount = activeParticipants.length || 1;
 
                     if (this.countBadge) {
                         this.countBadge.textContent = MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', participantCount);
+                    }
+
+                    if (activeParticipants.length === 0) {
+                        this.participantsSection.innerHTML = `
+                            <div class="participant current-user ${this.isHost ? 'host' : ''}">
+                                <div class="participant-avatar">${this.isHost ? 'H' : 'S'}</div>
+                                <span class="participant-role">
+                                    ${this.isHost ? MESSAGES.UI.HOST : MESSAGES.UI.LISTENER} ${MESSAGES.UI.YOU}
+                                </span>
+                            </div>
+                        `;
+                        return;
                     }
 
                     const participantsHtml = activeParticipants.map(participant => {
