@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "TuneLink (MVP)",
+  "version": "0.1.0",
+  "description": "Sync YouTube Music playback with a room code.",
+  "content_scripts": [
+    {
+      "matches": ["https://music.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": ["https://music.youtube.com/*"]
+}
