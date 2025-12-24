@@ -25,6 +25,7 @@ export class WebSocketService {
         return new Promise((resolve, reject) => {
             try {
                 this.manualDisconnect = false;
+                let resolved = false;
                 const baseUrl = WebSocketService.getBaseUrl();
                 this.socket = new WebSocket(`${baseUrl}${endpoint}`);
 
@@ -55,12 +56,26 @@ export class WebSocketService {
                         this.clientId = data.client_id;
                         this.roomId = data.room_id;
                         this.roles = data.roles;
+                        if (!resolved) {
+                            resolved = true;
+                            resolve({
+                                success: true,
+                                roomCode: this.roomId,
+                                isHost: this.roles.includes('owner')
+                            });
+                        }
+                        return;
+                    }
+
+                    if (!resolved && (data.type === 'room-joined' || data.type === 'room-created')) {
+                        this.roomId = data.code;
+                        this.roles = data.role === 'host' ? ['owner'] : ['listener'];
+                        resolved = true;
                         resolve({
                             success: true,
                             roomCode: this.roomId,
-                            isHost: this.roles.includes('owner')
+                            isHost: data.role === 'host'
                         });
-                        return;
                     }
 
                     if (!data.type && (data.title || data.video_id || typeof data.seconds === 'number' || typeof data.status === 'number')) {
