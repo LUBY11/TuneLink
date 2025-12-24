@@ -11,7 +11,7 @@ export class RoomService {
         this.currentRoom = null;
         this.isHost = false;
         this.participants = new Map();
-        this.songUpdateHandler = null;
+        this.songMessageHandler = null;
         this.initializeState();
     }
 
@@ -170,15 +170,23 @@ export class RoomService {
             if (response.success) {
                 this.currentRoom = response.roomCode;
                 this.isHost = response.isHost;
-                if (this.songUpdateHandler) {
-                    this.removeSongUpdateListener(this.songUpdateHandler);
-                }
-                this.songUpdateHandler = (songData) => {
-                    if (!this.isHost) {
-                        this.handleSongUpdate(songData);
+
+                if (this.wsService.socket) {
+                    if (this.songMessageHandler) {
+                        this.wsService.socket.removeEventListener('message', this.songMessageHandler);
                     }
-                };
-                this.addSongUpdateListener(this.songUpdateHandler);
+                    this.songMessageHandler = (event) => {
+                        try {
+                            const songData = JSON.parse(event.data);
+                            if (!this.isHost) {
+                                this.handleSongUpdate(songData);
+                            }
+                        } catch (error) {
+                            console.error('Mesaj işlenirken hata:', error);
+                        }
+                    };
+                    this.wsService.socket.addEventListener('message', this.songMessageHandler);
+                }
 
                 await this.updateExtensionState({
                     roomCode: this.currentRoom,
@@ -201,9 +209,9 @@ export class RoomService {
                 this.currentRoom = null;
                 this.isHost = false;
                 this.participants.clear();
-                if (this.songUpdateHandler) {
-                    this.removeSongUpdateListener(this.songUpdateHandler);
-                    this.songUpdateHandler = null;
+                if (this.songMessageHandler && this.wsService.socket) {
+                    this.wsService.socket.removeEventListener('message', this.songMessageHandler);
+                    this.songMessageHandler = null;
                 }
                 await this.clearExtensionState();
             }

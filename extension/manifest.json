@@ -2,7 +2,7 @@
   "update_url": "https://clients2.google.com/service/update2/crx",
   "manifest_version": 3,
   "name": "TuneLink",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Sync music with friends or family on YouTube Music. Share songs in real-time with easy group creation via link.",
   "permissions": [
     "storage",

@@ -67,27 +67,6 @@ export class WebSocketService {
                         return;
                     }
 
-                    if (!resolved && (data.type === 'room-joined' || data.type === 'room-created')) {
-                        this.roomId = data.code;
-                        this.roles = data.role === 'host' ? ['owner'] : ['listener'];
-                        resolved = true;
-                        resolve({
-                            success: true,
-                            roomCode: this.roomId,
-                            isHost: data.role === 'host'
-                        });
-                    }
-
-                    if (!data.type && (data.title || data.video_id || typeof data.seconds === 'number' || typeof data.status === 'number')) {
-                        const listeners = this.eventListeners.get('SONG_UPDATE');
-                        if (listeners) {
-                            for (const listener of listeners) {
-                                listener(data);
-                            }
-                        }
-                        return;
-                    }
-
                     const callback = this.messageCallbacks.get(data.type);
                     if (callback) {
                         callback(data);
