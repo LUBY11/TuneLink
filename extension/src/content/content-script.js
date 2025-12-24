@@ -10,9 +10,7 @@ async function initializePanel() {
 
         const LANGUAGE_KEY = 'ymt-language';
         const CHAT_ID_KEY = 'ymt-chat-id';
-        const WS_BASE_URL_KEY = 'ymt-ws-base-url';
         const storedLanguage = localStorage.getItem(LANGUAGE_KEY) || 'ko';
-        const storedWsBaseUrl = localStorage.getItem(WS_BASE_URL_KEY) || '';
         let chatClientId = sessionStorage.getItem(CHAT_ID_KEY);
         if (!chatClientId) {
             chatClientId = Math.random().toString(36).slice(2, 10);
@@ -76,13 +74,6 @@ async function initializePanel() {
                     </div>
                     <div class="mt-content">
                         <div class="mt-status">${MESSAGES.CONNECTION.OFFLINE}</div>
-                        <div class="mt-server-settings">
-                            <div class="mt-server-label">${MESSAGES.UI.SERVER}</div>
-                            <div class="mt-server-row">
-                                <input type="text" id="mt-server-url" placeholder="ws://localhost:50080" />
-                                <button id="mt-server-save">${MESSAGES.UI.SAVE}</button>
-                            </div>
-                        </div>
                         <div id="current-song-info" class="mt-song-info">
                             ${renderEmptySongInfo()}
                         </div>
@@ -100,23 +91,6 @@ async function initializePanel() {
                 this.content = this.panel.querySelector('.mt-content');
 
                 this.alert = new Alert(this.panel.querySelector('#alert-container'));
-
-                const serverInput = this.panel.querySelector('#mt-server-url');
-                const serverSave = this.panel.querySelector('#mt-server-save');
-                if (serverInput) {
-                    serverInput.value = storedWsBaseUrl;
-                }
-                if (serverSave && serverInput) {
-                    serverSave.addEventListener('click', () => {
-                        const nextUrl = serverInput.value.trim();
-                        if (nextUrl) {
-                            localStorage.setItem(WS_BASE_URL_KEY, nextUrl);
-                        } else {
-                            localStorage.removeItem(WS_BASE_URL_KEY);
-                        }
-                        this.alert.success(MESSAGES.SUCCESS.SAVED);
-                    });
-                }
 
                 const languageSelect = this.panel.querySelector('#mt-language-select');
                 if (languageSelect) {
@@ -199,7 +173,7 @@ async function initializePanel() {
                 this.content.innerHTML = `
                     <div class="mt-status online">
                         <div class="mt-status-text">${MESSAGES.CONNECTION.ONLINE}</div>
-                        <div class="participant-count-badge">1 ${MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', '1')}</div>
+                        <div class="participant-count-badge">${MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', '1')}</div>
                     </div>
                     <div id="current-song-info" class="mt-song-info">
                         ${renderEmptySongInfo()}
@@ -421,13 +395,6 @@ async function initializePanel() {
                         <div class="mt-status-text">${MESSAGES.CONNECTION.OFFLINE}</div>
                         <div class="participant-count-badge">${MESSAGES.UI.PARTICIPANTS_COUNT.replace('{count}', '0')}</div>
                     </div>
-                    <div class="mt-server-settings">
-                        <div class="mt-server-label">${MESSAGES.UI.SERVER}</div>
-                        <div class="mt-server-row">
-                            <input type="text" id="mt-server-url" placeholder="ws://localhost:50080" />
-                            <button id="mt-server-save">${MESSAGES.UI.SAVE}</button>
-                        </div>
-                    </div>
                     <div id="current-song-info" class="mt-song-info">
                         ${renderEmptySongInfo()}
                     </div>
@@ -449,23 +416,6 @@ async function initializePanel() {
                 this.chatMessages = null;
                 this.chatInput = null;
                 this.chatSendButton = null;
-
-                const serverInput = this.content.querySelector('#mt-server-url');
-                const serverSave = this.content.querySelector('#mt-server-save');
-                if (serverInput) {
-                    serverInput.value = localStorage.getItem(WS_BASE_URL_KEY) || '';
-                }
-                if (serverSave && serverInput) {
-                    serverSave.addEventListener('click', () => {
-                        const nextUrl = serverInput.value.trim();
-                        if (nextUrl) {
-                            localStorage.setItem(WS_BASE_URL_KEY, nextUrl);
-                        } else {
-                            localStorage.removeItem(WS_BASE_URL_KEY);
-                        }
-                        this.alert.success(MESSAGES.SUCCESS.SAVED);
-                    });
-                }
 
                 if (this.chatMessageHandler) {
                     this.roomService.wsService.removeEventListener('chat', this.chatMessageHandler);
